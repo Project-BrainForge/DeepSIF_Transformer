@@ -106,9 +106,7 @@ checkpoints/
 *.hdf5
 
 # MATLAB files (data)
-*.mat
-# !anatomy/*.mat  # Keep anatomy files if they're small and necessary
-# !requirements.txt  # Make sure requirements isn't excluded
+# *.mat
 
 # ================================
 # Logs and Temporary Files
@@ -252,7 +250,7 @@ docs/build/
 # ================================
 # Archives
 # ================================
-*.zip
+# *.zip
 *.tar.gz
 *.rar
 *.7z
