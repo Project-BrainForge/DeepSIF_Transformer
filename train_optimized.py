@@ -701,7 +701,7 @@ def main():
                 logger.info(f"💾 Best model saved to: {result_root}/model_best.pth")
             
             # Save checkpoint every 10 epochs
-            if epoch % 10 == 0 or epoch == config.training_config['epochs'] - 1:
+            if epoch % 1 == 0 or epoch == config.training_config['epochs'] - 1:
                 checkpoint_path = os.path.join(result_root, f'checkpoint_epoch_{epoch}.pth')
                 torch.save({
                     'epoch': epoch,
