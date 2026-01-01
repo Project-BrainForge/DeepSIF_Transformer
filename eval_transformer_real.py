@@ -53,7 +53,7 @@ def main():
         fn = os.path.join(result_root, 'epoch_' + args.resume)
     else:
         # Try different checkpoint names in order of preference
-        checkpoint_names = [ 'checkpoint_epoch_0.pth']
+        checkpoint_names = [ 'model_best.pth']
         fn = None
         for name in checkpoint_names:
             potential_path = os.path.join(result_root, name)
