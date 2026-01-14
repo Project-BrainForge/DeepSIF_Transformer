@@ -61,6 +61,78 @@ class MLPSpatialFilter(nn.Module):
         return out
 
 
+class CNNSpatialFilter(nn.Module):
+    """CNN-based spatial filter for extracting spatial features from sensors.
+    
+    Treats sensors as a 1D spatial dimension and applies convolutional kernels
+    to learn spatial patterns while preserving temporal dimension (500 timesteps).
+    
+    Architecture: 75 sensors → 64 → 128 → 256 → 500 features
+    """
+    
+    def __init__(self, num_sensor, num_hidden, activation):
+        super(CNNSpatialFilter, self).__init__()
+        
+        self.activation_fn = nn.__dict__[activation]() if activation in nn.__dict__ else nn.GELU()
+        
+        # Conv1d layers operating on spatial dimension (num_sensor=75)
+        # Input: (batch, seq_len=500, num_sensor=75) → needs reshape to (batch, num_sensor, seq_len)
+        # Then apply Conv1d which treats the channel dimension as spatial
+        
+        # Layer 1: 75 → 64 channels
+        self.conv1 = nn.Conv1d(num_sensor, 64, kernel_size=3, padding=1, bias=True)
+        self.bn1 = nn.BatchNorm1d(64)
+        
+        # Layer 2: 64 → 128 channels
+        self.conv2 = nn.Conv1d(64, 128, kernel_size=3, padding=1, bias=True)
+        self.bn2 = nn.BatchNorm1d(128)
+        
+        # Layer 3: 128 → 256 channels
+        self.conv3 = nn.Conv1d(128, 256, kernel_size=3, padding=1, bias=True)
+        self.bn3 = nn.BatchNorm1d(256)
+        
+        # Layer 4: 256 → num_hidden channels
+        self.conv4 = nn.Conv1d(256, num_hidden, kernel_size=3, padding=1, bias=True)
+        self.bn4 = nn.BatchNorm1d(num_hidden)
+        
+        # Final output layer
+        self.value = nn.Conv1d(num_hidden, num_hidden, kernel_size=1, bias=True)
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize conv and batch norm weights"""
+        for module in self.modules():
+            if isinstance(module, nn.Conv1d):
+                nn.init.kaiming_uniform_(module.weight, a=math.sqrt(5))
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.BatchNorm1d):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
+    
+    def forward(self, x):
+        # Input: (batch, seq_len, num_sensor)
+        # Reshape to (batch, num_sensor, seq_len) for Conv1d
+        x = x.transpose(1, 2)  # (batch, num_sensor, seq_len)
+        
+        # Conv layers with batch norm and activation
+        x = self.activation_fn(self.bn1(self.conv1(x)))
+        x = self.activation_fn(self.bn2(self.conv2(x)))
+        x = self.activation_fn(self.bn3(self.conv3(x)))
+        x = self.activation_fn(self.bn4(self.conv4(x)))
+        
+        # Final value layer
+        value = self.value(x)  # (batch, num_hidden, seq_len)
+        value = value.transpose(1, 2)  # (batch, seq_len, num_hidden)
+        
+        out = dict()
+        out['value'] = value
+        out['value_activation'] = self.activation_fn(value)
+        
+        return out
+
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_length=5000):
         super().__init__()
@@ -193,10 +265,15 @@ class TemporalFilter(nn.Module):
 class TemporalInverseNet(nn.Module):
 
     def __init__(self, num_sensor=75, num_source=994, rnn_layer=3,
-                 spatial_model=MLPSpatialFilter, temporal_model=TemporalFilter,
+                 spatial_model=None, temporal_model=TemporalFilter,
                  spatial_output='value_activation', temporal_output='rnn',
                  spatial_activation='ELU', temporal_activation='ELU', temporal_input_size=500):
         super(TemporalInverseNet, self).__init__()
+        
+        # Default to CNNSpatialFilter if not specified
+        if spatial_model is None:
+            spatial_model = CNNSpatialFilter
+            
         self.attribute_list = [num_sensor, num_source, rnn_layer,
                                spatial_model, temporal_model, spatial_output, temporal_output,
                                spatial_activation, temporal_activation, temporal_input_size]
@@ -224,11 +301,15 @@ class TransformerTemporalInverseNet(nn.Module):
     """
     
     def __init__(self, num_sensor=75, num_source=994, transformer_layers=4,
-                 spatial_model=MLPSpatialFilter, temporal_model=TransformerTemporalFilter,
+                 spatial_model=None, temporal_model=TransformerTemporalFilter,
                  spatial_output='value_activation', temporal_output='transformer',
                  spatial_activation='GELU', temporal_activation='GELU', temporal_input_size=500,
                  d_model=256, nhead=8, dropout=0.15):
         super(TransformerTemporalInverseNet, self).__init__()
+        
+        # Default to CNNSpatialFilter if not specified
+        if spatial_model is None:
+            spatial_model = CNNSpatialFilter
         
         self.attribute_list = [num_sensor, num_source, transformer_layers,
                                spatial_model, temporal_model, spatial_output, temporal_output,

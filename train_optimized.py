@@ -441,7 +441,7 @@ def main():
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     config = OptimizedConfig()
     
-    result_root = f'model_result/{args.model_id}_optimized_transformer'
+    result_root = f'model_result/{args.model_id}_cnn_transformer'
     logger = setup_logging(result_root, args.model_id, args.log_level, args.quiet)
     
     logger.info(f"Starting optimized training on device: {device}")
@@ -658,6 +658,23 @@ def main():
             
             grad_norm_display = f"{avg_grad_norm:.6f}" if avg_grad_norm is not None else "N/A"
             
+            # Calculate loss trend indicator
+            val_trend = ""
+            if len(val_history['total']) > 1:
+                recent_vals = val_history['total'][-3:] if len(val_history['total']) >= 3 else val_history['total']
+                if len(recent_vals) > 1:
+                    if recent_vals[-1] < recent_vals[-2]:
+                        val_trend = " ↓"  # Loss decreasing (good)
+                    elif recent_vals[-1] > recent_vals[-2]:
+                        val_trend = " ↑"  # Loss increasing (bad)
+                    else:
+                        val_trend = " →"  # Loss stable
+            
+            # Early stopping countdown
+            es_countdown = ""
+            if hasattr(early_stopping, 'counter'):
+                es_countdown = f" (Early stop in {early_stopping.patience - early_stopping.counter} epochs)"
+            
             logger.info("📊 " + "="*80)
             logger.info("📊 EPOCH SUMMARY")
             logger.info("📊 " + "="*80)
@@ -666,7 +683,7 @@ def main():
             logger.info(f"📊 Learning Rate: {new_lr:.2e}")
             logger.info(f"📊 Gradient Norm: {grad_norm_display}")
             logger.info(f"📊 Train Loss: {train_metrics['total']:.6f} {train_improvement}")
-            logger.info(f"📊 Val Loss: {val_metrics['total']:.6f} {val_improvement}")
+            logger.info(f"📊 Val Loss: {val_metrics['total']:.6f} {val_improvement}{val_trend}{es_countdown}")
             
             # Performance indicators
             if len(val_history['total']) > 1:

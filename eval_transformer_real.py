@@ -43,7 +43,7 @@ def main():
     # ======================= PREPARE PARAMETERS =====================================================================================================
     use_cuda = torch.cuda.is_available()
     device = torch.device(args.device if use_cuda else "cpu")
-    result_root = 'model_result/{}_optimized_transformer'.format(args.model_id)
+    result_root = 'model_result/{}_cnn_transformer'.format(args.model_id)
     if not os.path.exists(result_root):
         print("ERROR: No model {}".format(args.model_id))
         return
@@ -80,18 +80,19 @@ def main():
             net.load_state_dict(checkpoint['state_dict'], strict=False)
         else:
             # New format from train_optimized.py
-            print("=> Failed to load best result")
+            print("=> Loading model from checkpoint (new format)")
 
             best_result = checkpoint.get('best_val_loss', 'N/A')
             config = checkpoint.get('config')
             
-            # Create model from config
+            # Create model from config with CNNSpatialFilter as default
             if config:
-                print("=> Creating model from config")
+                print("=> Creating model from config with CNNSpatialFilter")
                 net = network.TransformerTemporalInverseNet(
                     num_sensor=config.model_config['num_sensor'],
                     num_source=config.model_config['num_source'],
                     transformer_layers=config.model_config['transformer_layers'],
+                    spatial_model=network.CNNSpatialFilter,
                     d_model=config.model_config['d_model'],
                     nhead=config.model_config['nhead'],
                     dropout=config.model_config['dropout'],
@@ -101,11 +102,40 @@ def main():
                 ).to(device)
             else:
                 # Default architecture if config not available
-                print("=> Creating default model")
-                net = network.TransformerTemporalInverseNet().to(device)
+                print("=> Creating default model with CNNSpatialFilter")
+                net = network.TransformerTemporalInverseNet(
+                    spatial_model=network.CNNSpatialFilter
+                ).to(device)
             
-            # Load model weights
-            net.load_state_dict(checkpoint['model_state_dict'], strict=False)
+            # Try to load model weights - handle CNN/MLP checkpoint compatibility
+            try:
+                net.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                print("=> Successfully loaded CNN checkpoint")
+            except RuntimeError as e:
+                if "size mismatch" in str(e) and "spatial" in str(e):
+                    print("=> CNN shape mismatch detected, attempting to load with MLPSpatialFilter")
+                    # This checkpoint was trained with MLPSpatialFilter, reload with that
+                    if config:
+                        net = network.TransformerTemporalInverseNet(
+                            num_sensor=config.model_config['num_sensor'],
+                            num_source=config.model_config['num_source'],
+                            transformer_layers=config.model_config['transformer_layers'],
+                            spatial_model=network.MLPSpatialFilter,
+                            d_model=config.model_config['d_model'],
+                            nhead=config.model_config['nhead'],
+                            dropout=config.model_config['dropout'],
+                            spatial_activation=config.model_config['spatial_activation'],
+                            temporal_activation=config.model_config['temporal_activation'],
+                            temporal_input_size=config.model_config['temporal_input_size']
+                        ).to(device)
+                    else:
+                        net = network.TransformerTemporalInverseNet(
+                            spatial_model=network.MLPSpatialFilter
+                        ).to(device)
+                    net.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                    print("=> Successfully loaded MLP checkpoint")
+                else:
+                    raise
         
         print("=> Loaded checkpoint {}, best validation loss: {}".format(fn, best_result))
     else:

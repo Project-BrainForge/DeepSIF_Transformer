@@ -64,7 +64,7 @@ def main():
     else:
         print("Warning: Distance matrix not found, localization error will not be calculated")
 
-    result_root = 'model_result/{}_transformer_model'.format(args.model_id)
+    result_root = 'model_result/{}_cnn_transformer'.format(args.model_id)
     if not os.path.exists(result_root):
         print("ERROR: No model {}".format(args.model_id))
         return
@@ -125,12 +125,13 @@ def main():
             best_result = checkpoint.get('best_val_loss', 'N/A')
             config = checkpoint.get('config')
             
-            # Create model from config
+            # Create model from config with CNNSpatialFilter as default
             if config:
                 net = network.TransformerTemporalInverseNet(
                     num_sensor=config.model_config['num_sensor'],
                     num_source=config.model_config['num_source'],
                     transformer_layers=config.model_config['transformer_layers'],
+                    spatial_model=network.CNNSpatialFilter,
                     d_model=config.model_config['d_model'],
                     nhead=config.model_config['nhead'],
                     dropout=config.model_config['dropout'],
@@ -138,6 +139,28 @@ def main():
                     temporal_activation=config.model_config['temporal_activation'],
                     temporal_input_size=config.model_config['temporal_input_size']
                 ).to(device)
+                
+                # Try to load - handle CNN/MLP checkpoint compatibility
+                try:
+                    net.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                except RuntimeError as e:
+                    if "size mismatch" in str(e) and "spatial" in str(e):
+                        # This checkpoint was trained with MLPSpatialFilter
+                        net = network.TransformerTemporalInverseNet(
+                            num_sensor=config.model_config['num_sensor'],
+                            num_source=config.model_config['num_source'],
+                            transformer_layers=config.model_config['transformer_layers'],
+                            spatial_model=network.MLPSpatialFilter,
+                            d_model=config.model_config['d_model'],
+                            nhead=config.model_config['nhead'],
+                            dropout=config.model_config['dropout'],
+                            spatial_activation=config.model_config['spatial_activation'],
+                            temporal_activation=config.model_config['temporal_activation'],
+                            temporal_input_size=config.model_config['temporal_input_size']
+                        ).to(device)
+                        net.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                    else:
+                        raise
             else:
                 # Default architecture if config not available
                 net = network.TransformerTemporalInverseNet().to(device)
