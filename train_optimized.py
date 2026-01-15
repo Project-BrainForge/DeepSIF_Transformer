@@ -429,6 +429,7 @@ def main():
     parser.add_argument('--data_path', default='labeled_dataset', type=str, help='Path to labeled dataset')
     parser.add_argument('--model_id', default='optimized', type=str, help='Model identifier')
     parser.add_argument('--device', default='cuda:0', type=str, help='Device to use')
+    parser.add_argument('--epochs', default=100, type=int, help='Number of training epochs (default: 100)')
     parser.add_argument('--resume', default='', type=str, help='Resume from checkpoint')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode with smaller dataset')
     parser.add_argument('--log_level', default='INFO', type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], 
@@ -440,6 +441,9 @@ def main():
     # Setup
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     config = OptimizedConfig()
+    
+    # Override epochs from command-line argument
+    config.training_config['epochs'] = args.epochs
     
     result_root = f'model_result/{args.model_id}_cnn_transformer'
     logger = setup_logging(result_root, args.model_id, args.log_level, args.quiet)
